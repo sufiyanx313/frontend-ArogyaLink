@@ -4,6 +4,8 @@ import React, { useState, useRef } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import CanvasStage from "@/components/3d/CanvasStage";
 import { ModeToggle } from "@/components/ui/ModeToggle";
+import { LanguageSelector } from "@/components/ui/LanguageSelector";
+import { HERO_COPY, type Language } from "@/data/translations";
 import { AiChamberView } from "@/components/ai/AiChamberView";
 import { ServiceCard } from "@/components/ui/ServiceCard";
 import { TokenBookingModal } from "@/components/modals/TokenBookingModal";
@@ -22,8 +24,14 @@ import {
   Droplet,
   ShieldAlert,
   HelpCircle,
+  Hospital,
+  Zap,
   Stethoscope as StethIcon,
 } from "lucide-react";
+
+// Icons for the three hero feature badges, paired positionally with
+// HERO_COPY[language].badges so the labels stay translatable.
+const HERO_BADGE_ICONS = [Stethoscope, Hospital, Zap];
 
 const SERVICES = [
   {
@@ -82,12 +90,16 @@ const FAQS = [
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAiMode, setIsAiMode] = useState(false);
-  
+  const [language, setLanguage] = useState<Language>("en");
+
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isBedModalOpen, setIsBedModalOpen] = useState(false);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
-  
+
+  const copy = HERO_COPY[language];
+  const isLatin = language === "en";
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const { scrollYProgress } = useScroll({
@@ -119,25 +131,31 @@ export default function HomePage() {
       </AnimatePresence>
 
       {/* Top Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 pointer-events-auto bg-transparent border-none">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center font-bold text-amber-600 shadow-sm">
+      {/* Self-contained dark glass bar: it sits above both the dark hero and the
+          light frosted sections below, so it carries its own contrast. */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-4 px-4 md:px-8 py-4 pointer-events-auto">
+        <div className="flex items-center gap-3 rounded-2xl bg-slate-950/55 border border-white/15 backdrop-blur-xl px-3 md:px-4 py-2.5 shadow-lg shadow-black/25">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-amber-400/20 border border-amber-300/40 flex items-center justify-center font-bold text-amber-300 shadow-sm">
             MH
           </div>
-          <div>
-            <p className="text-[10px] font-bold tracking-widest text-amber-600 uppercase">
-              Government of Maharashtra
+          <div className="hidden sm:block">
+            <p className="text-[10px] font-bold tracking-widest text-amber-300 uppercase">
+              {copy.govLine}
             </p>
-            <h1 className="text-sm font-extrabold tracking-wide text-slate-800 drop-shadow-xs">
-              PUBLIC HEALTH DEPARTMENT • आरोग्य विभाग
+            <h1 className="text-sm font-extrabold tracking-wide text-white">
+              {copy.deptLine}
             </h1>
           </div>
         </div>
 
-        <ModeToggle
-          isAiMode={isAiMode}
-          onToggle={() => setIsAiMode((prev) => !prev)}
-        />
+        <div className="flex items-center gap-2 md:gap-3">
+          <LanguageSelector value={language} onChange={setLanguage} />
+
+          <ModeToggle
+            isAiMode={isAiMode}
+            onToggle={() => setIsAiMode((prev) => !prev)}
+          />
+        </div>
       </header>
 
       {/* Background 3D Stage */}
@@ -146,10 +164,13 @@ export default function HomePage() {
       </div>
 
       {/* Global Frosted Glass Layer */}
+      {/* Raised from white/30 to white/75: the hero backdrop is now darkened by
+          the slate gradient, so the old value left the light-text-on-white
+          sections below sitting on mid-grey. */}
       {!isAiMode && (
         <motion.div
           style={{ opacity: glassOpacity }}
-          className="fixed inset-0 z-10 pointer-events-none bg-white/30 backdrop-blur-3xl backdrop-saturate-150 backdrop-contrast-105"
+          className="fixed inset-0 z-10 pointer-events-none bg-white/75 backdrop-blur-3xl backdrop-saturate-150 backdrop-contrast-105"
         />
       )}
 
@@ -161,18 +182,95 @@ export default function HomePage() {
         className="relative z-20"
       >
         {/* --- SECTION 1: HERO --- */}
+        {/* The 3D wordmark lives in the fixed WebGL canvas behind this section.
+            With the camera at z=6 / fov 45 the visible height is ~4.97 world
+            units, so the wordmark plus its ECG line occupy 39.5%-57.1% of the
+            viewport at worst case (including the Float bob and tilt). The zone
+            heights below leave that band empty so the DOM copy frames the 3D
+            text instead of colliding with it. */}
         {!isAiMode && (
-          <section className="relative h-[100dvh] w-full snap-start snap-always flex flex-col items-center justify-end pb-12 pointer-events-none">
+          <section className="relative h-[100dvh] w-full snap-start snap-always pointer-events-none">
             <motion.div
               style={{ opacity: heroHintOpacity }}
-              animate={{ y: [0, 8, 0] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-              className="flex flex-col items-center gap-2 text-slate-800 bg-white/70 backdrop-blur-md px-5 py-2.5 rounded-full border border-slate-200/80 shadow-md"
+              className="flex flex-col items-center h-full w-full px-6"
             >
-              <span className="text-xs font-bold tracking-wider uppercase">
-                Scroll down to explore services
-              </span>
-              <ChevronDown className="w-4 h-4 text-amber-600" />
+              {/* Above the wordmark: live network status */}
+              <div className="h-[36dvh] flex items-end pb-3">
+                <motion.div
+                  initial={{ opacity: 0, y: -12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex items-center gap-2.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-md px-5 py-2 shadow-lg shadow-black/25"
+                >
+                  <span className="relative flex items-center justify-center w-2.5 h-2.5">
+                    <span className="absolute inline-flex w-2.5 h-2.5 rounded-full bg-emerald-400/60 animate-ping" />
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153)]" />
+                  </span>
+                  <span
+                    className={`text-[11px] md:text-xs font-bold text-white/90 ${
+                      isLatin ? "uppercase tracking-widest" : "tracking-wide"
+                    }`}
+                  >
+                    {copy.statusPill}
+                  </span>
+                </motion.div>
+              </div>
+
+              {/* Reserved band for the 3D wordmark + ECG pulse line */}
+              <div className="h-[23dvh]" aria-hidden />
+
+              {/* Below the wordmark: official subtitle + real feature badges */}
+              <div className="flex flex-col items-center gap-5 md:gap-6 w-full max-w-4xl">
+                <motion.p
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                  className="text-center text-sm md:text-base font-medium leading-relaxed text-white/80 max-w-3xl"
+                >
+                  {copy.subtitle}
+                </motion.p>
+
+                <div className="flex flex-wrap items-center justify-center gap-2.5 md:gap-3">
+                  {copy.badges.map((badge, i) => {
+                    const Icon = HERO_BADGE_ICONS[i];
+
+                    return (
+                      <motion.div
+                        key={badge}
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          duration: 0.6,
+                          delay: 0.8 + i * 0.1,
+                          ease: [0.22, 1, 0.36, 1],
+                        }}
+                        className="flex items-center gap-2 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md px-4 py-2.5 shadow-lg shadow-black/25"
+                      >
+                        <Icon className="w-4 h-4 shrink-0 text-teal-300" />
+                        <span className="text-xs md:text-[13px] font-semibold text-white/90 whitespace-nowrap">
+                          {badge}
+                        </span>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Scroll affordance */}
+              <motion.div
+                animate={{ y: [0, 8, 0] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                className="mt-auto mb-10 flex flex-col items-center gap-1.5 text-white/80 bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/20 shadow-lg shadow-black/25"
+              >
+                <span
+                  className={`text-xs font-bold ${
+                    isLatin ? "uppercase tracking-wider" : "tracking-wide"
+                  }`}
+                >
+                  {copy.scrollHint}
+                </span>
+                <ChevronDown className="w-4 h-4 text-teal-300" />
+              </motion.div>
             </motion.div>
           </section>
         )}
