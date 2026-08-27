@@ -5,7 +5,6 @@ import Image from "next/image";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
 import {
   PerspectiveCamera,
-  Float,
   Center,
   Environment,
   Lightformer,
@@ -39,6 +38,21 @@ const PULSE_SPIKE_PEAK = 0.3 * PULSE_AMPLITUDE; // 0.3 = tallest point in the cu
 const PULSE_CLEARANCE = 0.055;
 const PULSE_Y = -(WORDMARK_HEIGHT / 2) - PULSE_SPIKE_PEAK - PULSE_CLEARANCE;
 
+// Vertical placement of the wordmark + ECG group.
+// The camera sits at z=6 with fov 45, so the visible height at z=0 is
+// 2 * 6 * tan(22.5deg) = 4.9706 world units, and a screen fraction f maps to
+// world Y = (0.5 - f) * 4.9706. Measuring hospital.png as object-cover puts the
+// entrance doors at roughly 60-67% of the viewport, the steps at 67-76%, the
+// planting bed at 76-89% and the water reflection pool at 89-97%. GROUP_Y of
+// -1.15 lands the ECG baseline near 82% and the wordmark across 68-79%: clear
+// of the building entrance, sitting just above the pool.
+const GROUP_Y = -1.15;
+
+// Gentle vertical bob, applied to the single group that holds both the wordmark
+// and the pulse line so the two rise and fall in sync.
+const FLOAT_SPEED = 1.2;
+const FLOAT_AMPLITUDE = 0.15;
+
 // The teal fill in the SVG marks the "Link" half; the second path is "Link"
 // too, so either signal identifies it if the other ever changes.
 // No leading "#" — this is compared against THREE.Color#getHexString().
@@ -46,14 +60,14 @@ const LINK_FILL_HEX = "00d2b4";
 
 const BRAND_TEAL = "#00D2B4";
 
-// Titanium chrome white — needs the environment map below to read as metal.
+// Deep blue, polished metal — needs the environment map below to read as metal.
 const TONE_AAROGYA = {
-  color: "#f1f5f9",
+  color: "#1E3A8A",
   emissive: "#000000",
   emissiveIntensity: 0,
-  metalness: 0.85,
+  metalness: 0.7,
   roughness: 0.2,
-  envMapIntensity: 1.15,
+  envMapIntensity: 1.1,
 };
 
 // Radiant medical teal
@@ -295,6 +309,11 @@ function Real3DAarogyaLinkText({ isAiMode }: { isAiMode: boolean }) {
       groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY, 0.08);
       groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotX, 0.08);
 
+      // Slow, minimal vertical float. Both the wordmark and the ECG line are
+      // children of this group, so one sine wave moves them together.
+      groupRef.current.position.y =
+        GROUP_Y + Math.sin(state.clock.elapsedTime * FLOAT_SPEED) * FLOAT_AMPLITUDE;
+
       const targetZ = isAiMode ? -3 : 0;
 
       // Keep the wordmark inside the frustum on narrow viewports.
@@ -307,40 +326,39 @@ function Real3DAarogyaLinkText({ isAiMode }: { isAiMode: boolean }) {
   });
 
   return (
-    <Float speed={1.8} rotationIntensity={0.08} floatIntensity={0.4} position={[0, 0.2, 0]}>
-      <group ref={groupRef}>
-        <Center scale={[WORDMARK_SCALE, -WORDMARK_SCALE, WORDMARK_SCALE]}>
-          {words.map((word, wordIndex) =>
-            word.shapes.map((shape, shapeIndex) => (
-              <mesh key={`${wordIndex}-${shapeIndex}`}>
-                <extrudeGeometry args={[shape, EXTRUDE_SETTINGS]} />
-                <meshStandardMaterial
-                  color={word.tone.color}
-                  emissive={word.tone.emissive}
-                  emissiveIntensity={word.tone.emissiveIntensity}
-                  metalness={word.tone.metalness}
-                  roughness={word.tone.roughness}
-                  envMapIntensity={word.tone.envMapIntensity}
-                  side={THREE.DoubleSide}
-                />
-              </mesh>
-            ))
-          )}
-        </Center>
+    <group ref={groupRef} position={[0, GROUP_Y, 0]}>
+      <Center scale={[WORDMARK_SCALE, -WORDMARK_SCALE, WORDMARK_SCALE]}>
+        {words.map((word, wordIndex) =>
+          word.shapes.map((shape, shapeIndex) => (
+            <mesh key={`${wordIndex}-${shapeIndex}`}>
+              <extrudeGeometry args={[shape, EXTRUDE_SETTINGS]} />
+              <meshStandardMaterial
+                color={word.tone.color}
+                emissive={word.tone.emissive}
+                emissiveIntensity={word.tone.emissiveIntensity}
+                metalness={word.tone.metalness}
+                roughness={word.tone.roughness}
+                envMapIntensity={word.tone.envMapIntensity}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          ))
+        )}
+      </Center>
 
-        <PulseWave />
-      </group>
-    </Float>
+      <PulseWave />
+    </group>
   );
 }
 
 // 3. Main Stage Component
-// Layer order: photographic backdrop -> dark gradient + blur -> WebGL wordmark.
-// The backdrop lives in the DOM rather than as a textured plane so the gradient
-// treatment sits *behind* the 3D text, letting it read at high contrast.
+// Layer order: photographic backdrop -> WebGL wordmark. The backdrop stays in
+// the DOM rather than as a textured plane so the wordmark composites over it
+// cleanly. No overlay, tint or blur: hospital.png renders at full clarity and
+// keeps its bright daytime look.
 export default function CanvasStage({ isAiMode = false }: CanvasStageProps) {
   return (
-    <div className="fixed inset-0 z-0 h-full w-full pointer-events-none bg-slate-950">
+    <div className="fixed inset-0 z-0 h-full w-full pointer-events-none bg-slate-100">
       <Image
         src="/hospital.png"
         alt=""
@@ -349,15 +367,6 @@ export default function CanvasStage({ isAiMode = false }: CanvasStageProps) {
         sizes="100vw"
         className="object-cover"
       />
-
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/75 via-slate-900/55 to-slate-950/90 backdrop-blur-sm" />
-
-      {/* Radial scrim centred on the wordmark. The linear gradient above is at
-          its weakest (55%) exactly where the 3D text sits, which left the
-          building lit right behind it; this drops the mean luminance behind the
-          wordmark from ~122 to ~42 while leaving the hospital visible at the
-          edges. */}
-      <div className="absolute inset-0 bg-[radial-gradient(55%_40%_at_50%_47%,rgba(2,6,23,0.6)_0%,rgba(2,6,23,0.3)_50%,rgba(2,6,23,0)_78%)]" />
 
       <div className="absolute inset-0">
         <Canvas
