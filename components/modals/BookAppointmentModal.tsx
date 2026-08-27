@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -17,139 +17,56 @@ import {
   ShieldCheck,
   Stethoscope,
   CreditCard,
-  Printer,
-  FileCheck,
 } from "lucide-react";
+
+import { type AppointmentFlow, useAppointmentFlow } from "@/hooks/useAppointmentFlow";
+import { DISTRICTS } from "@/data/tokenBookingOptions";
+import { APPOINTMENT_DATES, APPOINTMENT_SLOTS } from "@/data/serviceOptions";
+import type { VoiceServiceState } from "@/lib/voice/agent";
+import { VoiceStatusStrip } from "@/components/modals/VoiceStatusStrip";
+
+/**
+ * Specialist appointment wizard.
+ *
+ * Controlled by the AI chamber when a `flow` is injected, standalone otherwise —
+ * the same split as the other three service modals, so voice and touch always
+ * drive one state machine rather than two that drift apart.
+ *
+ * The doctor list is now `flow.doctorOptions`, which comes from the shared roster
+ * in `data/serviceOptions`. The local `DOCTOR_SPECIALISTS` array this file used to
+ * carry disagreed with the duty roster on ids — doc-3 was Shinde here and Patil
+ * on the availability screen — so the slip could name a different specialist than
+ * the one the user had just been told was on duty.
+ */
 
 interface BookAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Injected by the AI chamber so voice and touch share one state machine. */
+  flow?: AppointmentFlow;
+  /** Read-only agent status, for the strip under the header. */
+  voice?: VoiceServiceState;
 }
 
-const DISTRICTS = [
-  "Pune (पुणे)",
-  "Mumbai Suburban (मुंबई उपनगर)",
-  "Nagpur (नागपूर)",
-  "Nashik (नाशिक)",
-  "Chhatrapati Sambhajinagar (छ. संभाजीनगर)",
-  "Thane (ठाणे)",
-];
-
-const HOSPITALS: Record<string, string[]> = {
-  "Pune (पुणे)": [
-    "Sassoon General Hospital & BJMC",
-    "Aundh District Civil Hospital",
-    "YCM Hospital & Medical College",
-  ],
-  "Mumbai Suburban (मुंबई उपनगर)": [
-    "KEM Hospital & Seth GS Medical College",
-    "Lokmanya Tilak Municipal General Hospital (Sion)",
-    "Cooper Hospital & HBT Medical College",
-  ],
-  "Nagpur (नागपूर)": [
-    "Government Medical College & Hospital (GMCH)",
-    "Indira Gandhi GMC (Mayo Hospital)",
-  ],
-  "Nashik (नाशिक)": [
-    "Nashik District Civil Hospital",
-    "General Hospital Malegaon",
-  ],
-  "Chhatrapati Sambhajinagar (छ. संभाजीनगर)": [
-    "Government Medical College & Hospital (Ghati)",
-    "District Civil Hospital Chh. Sambhajinagar",
-  ],
-  "Thane (ठाणे)": [
-    "Thane District Civil Hospital",
-    "Chhatrapati Shivaji Maharaj Hospital Kalwa",
-  ],
-};
-
-const DOCTOR_SPECIALISTS = [
-  {
-    id: "doc-1",
-    name: "Dr. Rajeshwar Kulkarni",
-    marathi: "डॉ. राजेश्वर कुलकर्णी",
-    dept: "General Medicine",
-    room: "Room 14",
-    experience: "14+ Yrs",
-  },
-  {
-    id: "doc-2",
-    name: "Dr. Ananya Deshmukh",
-    marathi: "डॉ. अनन्या देशमुख",
-    dept: "Orthopedics",
-    room: "Room 22",
-    experience: "11+ Yrs",
-  },
-  {
-    id: "doc-3",
-    name: "Dr. Shalini Shinde",
-    marathi: "डॉ. शालिनी शिंदे",
-    dept: "Gynecology & Obstetrics",
-    room: "Room 11",
-    experience: "18+ Yrs",
-  },
-  {
-    id: "doc-4",
-    name: "Dr. Sanjay Patil",
-    marathi: "डॉ. संजय पाटील",
-    dept: "Pediatrics",
-    room: "Room 08",
-    experience: "16+ Yrs",
-  },
-];
-
-const AVAILABLE_SLOTS = [
-  "09:30 AM",
-  "10:15 AM",
-  "11:00 AM",
-  "11:45 AM",
-  "01:30 PM",
-  "02:15 PM",
-  "03:00 PM",
-];
-
-export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalProps) {
-  const [step, setStep] = useState<
-    "location" | "doctor" | "slot" | "patient" | "confirming" | "slip"
-  >("location");
-
-  const [selectedDistrict, setSelectedDistrict] = useState("");
-  const [selectedHospital, setSelectedHospital] = useState("");
-  const [selectedDoctor, setSelectedDoctor] = useState<(typeof DOCTOR_SPECIALISTS)[0] | null>(null);
-  const [selectedDate, setSelectedDate] = useState("Tomorrow (उद्या)");
-  const [selectedSlot, setSelectedSlot] = useState("");
-  
-  // Patient details state
-  const [patientName, setPatientName] = useState("");
-  const [patientAge, setPatientAge] = useState("");
-  const [patientPhone, setPatientPhone] = useState("");
-  const [abhaId, setAbhaId] = useState("");
-  const [appointmentId, setAppointmentId] = useState("");
-
-  const handleBookingConfirm = () => {
-    setStep("confirming");
-    const randomCode = `MH-APT-${Math.floor(1000 + Math.random() * 9000)}`;
-    setAppointmentId(randomCode);
-
-    setTimeout(() => {
-      setStep("slip");
-    }, 2200);
-  };
-
-  const resetFlow = () => {
-    setSelectedDistrict("");
-    setSelectedHospital("");
-    setSelectedDoctor(null);
-    setSelectedSlot("");
-    setPatientName("");
-    setPatientAge("");
-    setPatientPhone("");
-    setAbhaId("");
-    setStep("location");
-  };
+export function BookAppointmentModal({
+  isOpen,
+  onClose,
+  flow: injectedFlow,
+  voice,
+}: BookAppointmentModalProps) {
+  // Always called, so hook order stays stable between controlled and
+  // uncontrolled use; the result is ignored when a flow is supplied.
+  const internalFlow = useAppointmentFlow();
+  const flow = injectedFlow ?? internalFlow;
 
   if (!isOpen) return null;
+
+  const showDistricts = flow.step === "district";
+  const showHospitals = flow.step === "hospital";
+  const showDoctors = flow.step === "doctor";
+  const showSlots = flow.step === "slot";
+  const showPatientForm = flow.step === "patient_info" && !flow.isConfirming;
+  const showSlip = flow.step === "completed" && !flow.isConfirming;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
@@ -194,80 +111,88 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
           </button>
         </div>
 
+        <div className="shrink-0">
+          <VoiceStatusStrip voice={voice} accent="violet" />
+        </div>
+
         {/* Modal Body */}
         <div className="p-6 md:p-8 flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {/* STEP 1: District & Hospital Selection */}
-            {step === "location" && (
+            {/* STEP 1: District */}
+            {showDistricts && (
               <motion.div
-                key="step-location"
+                key="step-district"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                {!selectedDistrict ? (
-                  <>
-                    <div className="flex items-center gap-2 text-slate-700">
-                      <MapPin className="w-4 h-4 text-purple-600" />
-                      <span className="text-xs font-bold tracking-wide uppercase">
-                        Step 1: Select District / जिल्हा निवडा
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {DISTRICTS.map((dist) => (
-                        <button
-                          key={dist}
-                          onClick={() => setSelectedDistrict(dist)}
-                          className="p-4 rounded-2xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-400 text-left font-semibold text-slate-800 transition-all hover:scale-[1.01] active:scale-95 shadow-xs cursor-pointer flex items-center justify-between"
-                        >
-                          <span>{dist}</span>
-                          <ArrowRight className="w-4 h-4 text-slate-400" />
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-slate-700">
-                        <Building2 className="w-4 h-4 text-purple-600" />
-                        <span className="text-xs font-bold tracking-wide uppercase">
-                          Step 2: Select Hospital / रुग्णालय निवडा
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setSelectedDistrict("")}
-                        className="text-[11px] font-mono text-purple-600 font-bold hover:underline"
-                      >
-                        Change ({selectedDistrict})
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      {(HOSPITALS[selectedDistrict] || []).map((hosp) => (
-                        <button
-                          key={hosp}
-                          onClick={() => {
-                            setSelectedHospital(hosp);
-                            setStep("doctor");
-                          }}
-                          className="p-4 rounded-2xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-400 text-left font-semibold text-slate-800 transition-all hover:scale-[1.01] active:scale-95 shadow-xs cursor-pointer flex items-center justify-between"
-                        >
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">{hosp}</p>
-                            <p className="text-[11px] text-purple-700 font-medium">Digital OPD Appointment Facility Enabled</p>
-                          </div>
-                          <ArrowRight className="w-4 h-4 text-slate-400" />
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center gap-2 text-slate-700">
+                  <MapPin className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs font-bold tracking-wide uppercase">
+                    Step 1: Select District / जिल्हा निवडा
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {DISTRICTS.map((district) => (
+                    <button
+                      key={district.id}
+                      onClick={() => flow.selectDistrict(district)}
+                      className="p-4 rounded-2xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-400 text-left font-semibold text-slate-800 transition-all hover:scale-[1.01] active:scale-95 shadow-xs cursor-pointer flex items-center justify-between"
+                    >
+                      <span>{district.label}</span>
+                      <ArrowRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                  ))}
+                </div>
               </motion.div>
             )}
 
-            {/* STEP 2: Doctor Specialist Selection */}
-            {step === "doctor" && (
+            {/* STEP 2: Hospital */}
+            {showHospitals && (
+              <motion.div
+                key="step-hospital"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Building2 className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold tracking-wide uppercase">
+                      Step 2: Select Hospital / रुग्णालय निवडा
+                    </span>
+                  </div>
+                  <button
+                    onClick={flow.backToDistricts}
+                    className="text-[11px] font-mono text-purple-600 font-bold hover:underline cursor-pointer"
+                  >
+                    Change ({flow.district?.label})
+                  </button>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {flow.hospitalOptions.map((hospital) => (
+                    <button
+                      key={hospital.id}
+                      onClick={() => flow.selectHospital(hospital)}
+                      className="p-4 rounded-2xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-400 text-left font-semibold text-slate-800 transition-all hover:scale-[1.01] active:scale-95 shadow-xs cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{hospital.name}</p>
+                        <p className="text-[11px] text-purple-700 font-medium">
+                          Digital OPD Appointment Facility Enabled
+                        </p>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* STEP 3: Doctor Specialist Selection */}
+            {showDoctors && (
               <motion.div
                 key="step-doctor"
                 initial={{ opacity: 0, x: 20 }}
@@ -283,23 +208,20 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                     </span>
                   </div>
                   <span className="text-[11px] font-mono text-slate-500 font-bold truncate max-w-[200px]">
-                    {selectedHospital}
+                    {flow.hospital?.name}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {DOCTOR_SPECIALISTS.map((doc) => (
+                  {flow.doctorOptions.map((doc) => (
                     <button
                       key={doc.id}
-                      onClick={() => {
-                        setSelectedDoctor(doc);
-                        setStep("slot");
-                      }}
+                      onClick={() => flow.selectDoctor(doc)}
                       className="p-4 rounded-2xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-400 text-left transition-all hover:scale-[1.01] active:scale-95 shadow-xs cursor-pointer flex items-center justify-between"
                     >
                       <div>
                         <span className="text-[10px] font-mono font-bold text-purple-600 uppercase">
-                          {doc.dept}
+                          {doc.deptName}
                         </span>
                         <p className="text-sm font-extrabold text-slate-900 mt-0.5">
                           {doc.name}
@@ -315,8 +237,8 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
               </motion.div>
             )}
 
-            {/* STEP 3: Slot & Date Selection */}
-            {step === "slot" && (
+            {/* STEP 4: Slot & Date Selection */}
+            {showSlots && (
               <motion.div
                 key="step-slot"
                 initial={{ opacity: 0, x: 20 }}
@@ -332,48 +254,45 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                     </span>
                   </div>
                   <span className="text-[11px] font-mono text-purple-600 font-bold">
-                    {selectedDoctor?.name}
+                    {flow.doctor?.name}
                   </span>
                 </div>
 
                 {/* Date Pills */}
                 <div className="flex items-center gap-2">
-                  {["Tomorrow (उद्या)", "Day After (परवा)", "In 3 Days"].map((d) => (
+                  {APPOINTMENT_DATES.map((date) => (
                     <button
-                      key={d}
-                      onClick={() => setSelectedDate(d)}
+                      key={date.id}
+                      onClick={() => flow.selectDate(date.id)}
                       className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        selectedDate === d
+                        flow.date.id === date.id
                           ? "bg-purple-600 text-white shadow-xs"
                           : "bg-white text-slate-700 border border-slate-200"
                       }`}
                     >
-                      {d}
+                      {date.label}
                     </button>
                   ))}
                 </div>
 
                 {/* Available Time Slots Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                  {AVAILABLE_SLOTS.map((slot) => (
+                  {APPOINTMENT_SLOTS.map((slot) => (
                     <button
-                      key={slot}
-                      onClick={() => {
-                        setSelectedSlot(slot);
-                        setStep("patient");
-                      }}
+                      key={slot.id}
+                      onClick={() => flow.selectSlot(slot)}
                       className="p-3 rounded-xl bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-500 text-center font-mono text-xs font-bold text-slate-800 transition-all hover:scale-105 active:scale-95 shadow-xs cursor-pointer flex flex-col items-center justify-center gap-1"
                     >
                       <Clock className="w-3.5 h-3.5 text-purple-600" />
-                      <span>{slot}</span>
+                      <span>{slot.label}</span>
                     </button>
                   ))}
                 </div>
               </motion.div>
             )}
 
-            {/* STEP 4: Patient Info Form */}
-            {step === "patient" && (
+            {/* STEP 5: Patient Info Form */}
+            {showPatientForm && (
               <motion.div
                 key="step-patient"
                 initial={{ opacity: 0, x: 20 }}
@@ -383,13 +302,13 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
               >
                 <div className="text-center mb-4">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-600">
-                    Appointment with {selectedDoctor?.name}
+                    Appointment with {flow.doctor?.name}
                   </span>
                   <h4 className="text-base font-extrabold text-slate-900 mt-0.5">
                     Patient Consultation Form
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Slot: {selectedDate} at {selectedSlot} ({selectedDoctor?.room})
+                    Slot: {flow.date.label} at {flow.slot?.label} ({flow.doctor?.room})
                   </p>
                 </div>
 
@@ -399,18 +318,19 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                     <input
                       type="text"
                       placeholder="Patient Full Name / रुग्णाचे पूर्ण नाव"
-                      value={patientName}
-                      onChange={(e) => setPatientName(e.target.value)}
+                      value={flow.patientName}
+                      onChange={(event) => flow.setPatientName(event.target.value)}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-xs font-semibold outline-none text-slate-800"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <input
-                      type="number"
-                      placeholder="Age / वय"
-                      value={patientAge}
-                      onChange={(e) => setPatientAge(e.target.value)}
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Age / वय (Optional)"
+                      value={flow.patientAge}
+                      onChange={(event) => flow.setPatientAge(event.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-xs font-semibold outline-none text-slate-800"
                     />
                     <div className="relative">
@@ -419,8 +339,8 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                         type="tel"
                         maxLength={10}
                         placeholder="Mobile Number"
-                        value={patientPhone}
-                        onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, ""))}
+                        value={flow.patientPhone}
+                        onChange={(event) => flow.setPatientPhone(event.target.value)}
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-xs font-semibold outline-none text-slate-800"
                       />
                     </div>
@@ -431,16 +351,16 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                     <input
                       type="text"
                       placeholder="ABHA ID / Ayushman Card (Optional / ऐच्छिक)"
-                      value={abhaId}
-                      onChange={(e) => setAbhaId(e.target.value)}
+                      value={flow.abhaId}
+                      onChange={(event) => flow.setAbhaId(event.target.value)}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-xs font-mono font-semibold outline-none text-slate-800"
                     />
                   </div>
                 </div>
 
                 <button
-                  disabled={!patientName || !patientAge || patientPhone.length < 10}
-                  onClick={handleBookingConfirm}
+                  disabled={!flow.canConfirm}
+                  onClick={flow.confirmBooking}
                   className="w-full mt-2 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md shadow-purple-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
                   <ShieldCheck className="w-4 h-4" />
@@ -449,8 +369,8 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
               </motion.div>
             )}
 
-            {/* STEP 5: Confirming Animation */}
-            {step === "confirming" && (
+            {/* STEP 6: Confirming Animation */}
+            {flow.isConfirming && (
               <motion.div
                 key="step-confirming"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -478,8 +398,8 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
               </motion.div>
             )}
 
-            {/* STEP 6: DIGITAL APPOINTMENT SLIP */}
-            {step === "slip" && (
+            {/* STEP 7: DIGITAL APPOINTMENT SLIP */}
+            {showSlip && (
               <motion.div
                 key="step-slip"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -517,7 +437,7 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                       Booking Reference ID
                     </p>
                     <h3 className="text-2xl font-black text-purple-900 mt-0.5">
-                      {appointmentId}
+                      {flow.appointmentId}
                     </h3>
                   </div>
 
@@ -525,37 +445,42 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                   <div className="space-y-2.5 text-xs text-slate-700">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-400">Patient:</span>
-                      <span className="font-bold">{patientName} ({patientAge} Yrs)</span>
+                      <span className="font-bold">
+                        {flow.patientName}
+                        {flow.patientAge ? ` (${flow.patientAge} Yrs)` : ""}
+                      </span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-400">Specialist:</span>
-                      <span className="font-bold">{selectedDoctor?.name}</span>
+                      <span className="font-bold">{flow.doctor?.name}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-400">Department:</span>
-                      <span className="font-bold">{selectedDoctor?.dept}</span>
+                      <span className="font-bold">{flow.doctor?.deptName}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-400">Hospital:</span>
-                      <span className="font-bold truncate max-w-[200px]">{selectedHospital}</span>
+                      <span className="font-bold truncate max-w-[200px]">
+                        {flow.hospital?.name}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-0.5">
-                      <span className="text-slate-400">Schedule & Room:</span>
+                      <span className="text-slate-400">Schedule &amp; Room:</span>
                       <span className="font-bold font-mono text-purple-700">
-                        {selectedDate}, {selectedSlot} • {selectedDoctor?.room}
+                        {flow.date.label}, {flow.slot?.label} • {flow.doctor?.room}
                       </span>
                     </div>
                   </div>
                 </div>
 
                 <p className="text-[10px] font-mono text-slate-500 mt-3 text-center">
-                  * SMS with appointment pass has been dispatched to +91 {patientPhone}
+                  * SMS with appointment pass has been dispatched to +91 {flow.patientPhone}
                 </p>
 
                 {/* Bottom Actions */}
                 <div className="flex items-center gap-3 mt-4">
                   <button
-                    onClick={resetFlow}
+                    onClick={flow.reset}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -565,7 +490,7 @@ export function BookAppointmentModal({ isOpen, onClose }: BookAppointmentModalPr
                     onClick={onClose}
                     className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/20 transition-all cursor-pointer"
                   >
-                    Done & Close
+                    Done &amp; Close
                   </button>
                 </div>
               </motion.div>

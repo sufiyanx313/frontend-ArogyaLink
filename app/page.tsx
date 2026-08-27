@@ -3,13 +3,14 @@
 import React, { useState, useRef } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import CanvasStage from "@/components/3d/CanvasStage";
-import { ModeToggle } from "@/components/ui/ModeToggle";
+import { SiteNav } from "@/components/ui/SiteNav";
 import { AiChamberView } from "@/components/ai/AiChamberView";
 import { ServiceCard } from "@/components/ui/ServiceCard";
 import { TokenBookingModal } from "@/components/modals/TokenBookingModal";
 import { BedAvailabilityModal } from "@/components/modals/BedAvailabilityModal";
 import { DoctorAvailabilityModal } from "@/components/modals/DoctorAvailabilityModal";
 import { BookAppointmentModal } from "@/components/modals/BookAppointmentModal";
+import { LoginModal } from "@/components/modals/LoginModal";
 import { MedicalPreloader } from "@/components/ui/MedicalPreloader";
 import {
   ChevronDown,
@@ -87,6 +88,10 @@ export default function HomePage() {
   const [isBedModalOpen, setIsBedModalOpen] = useState(false);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+
+  // Owned here rather than in the chamber: the nav that triggers login is
+  // site-wide, so login has to work in normal mode too.
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -118,27 +123,12 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {/* Top Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 pointer-events-auto bg-transparent border-none">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center font-bold text-amber-600 shadow-sm">
-            MH
-          </div>
-          <div>
-            <p className="text-[10px] font-bold tracking-widest text-amber-600 uppercase">
-              Government of Maharashtra
-            </p>
-            <h1 className="text-sm font-extrabold tracking-wide text-slate-800 drop-shadow-xs">
-              PUBLIC HEALTH DEPARTMENT • आरोग्य विभाग
-            </h1>
-          </div>
-        </div>
-
-        <ModeToggle
-          isAiMode={isAiMode}
-          onToggle={() => setIsAiMode((prev) => !prev)}
-        />
-      </header>
+      {/* Top Navbar — frosted glass so the 3D stage reads through it */}
+      <SiteNav
+        isAiMode={isAiMode}
+        onToggle={() => setIsAiMode((prev) => !prev)}
+        onLoginClick={() => setIsLoginModalOpen(true)}
+      />
 
       {/* Background 3D Stage */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -162,7 +152,7 @@ export default function HomePage() {
       >
         {/* --- SECTION 1: HERO --- */}
         {!isAiMode && (
-          <section className="relative h-[100dvh] w-full snap-start snap-always flex flex-col items-center justify-end pb-12 pointer-events-none">
+          <section id="hero" className="relative h-[100dvh] w-full snap-start snap-always flex flex-col items-center justify-end pb-12 pointer-events-none">
             <motion.div
               style={{ opacity: heroHintOpacity }}
               animate={{ y: [0, 8, 0] }}
@@ -179,7 +169,7 @@ export default function HomePage() {
 
         {/* --- SECTION 2: SERVICES CARDS --- */}
         {!isAiMode && (
-          <section className="relative min-h-[100dvh] w-full snap-start snap-always flex flex-col justify-center px-6 md:px-12 py-24 pointer-events-auto">
+          <section id="main-content" className="relative min-h-[100dvh] w-full snap-start snap-always flex flex-col justify-center px-6 md:px-12 py-24 pointer-events-auto">
             <div className="w-full max-w-6xl mx-auto">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -215,7 +205,7 @@ export default function HomePage() {
 
         {/* --- SECTION 3: PREMIUM GLASS FOOTER DASHBOARD --- */}
         {!isAiMode && (
-          <section className="relative min-h-[100dvh] w-full snap-start snap-always flex flex-col justify-center px-6 md:px-12 py-16 pointer-events-auto">
+          <section id="about" className="relative min-h-[100dvh] w-full snap-start snap-always flex flex-col justify-center px-6 md:px-12 py-16 pointer-events-auto">
             <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
               
               {/* Col 1: Mission Card */}
@@ -255,6 +245,7 @@ export default function HomePage() {
 
               {/* Col 2: Emergency Hotlines */}
               <motion.div
+                id="contact"
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: false, amount: 0.3 }}
@@ -362,6 +353,9 @@ export default function HomePage() {
       <AnimatePresence>
         {isAppointmentModalOpen && <BookAppointmentModal isOpen={isAppointmentModalOpen} onClose={() => setIsAppointmentModalOpen(false)} />}
       </AnimatePresence>
+      <AnimatePresence>
+        {isLoginModalOpen && <LoginModal isOpen onClose={() => setIsLoginModalOpen(false)} />}
+      </AnimatePresence>
 
       {/* AI Chamber View */}
       <AnimatePresence mode="wait">
@@ -374,7 +368,10 @@ export default function HomePage() {
             transition={{ duration: 0.35, ease: "easeInOut" }}
             className="fixed inset-0 z-30 pointer-events-auto"
           >
-            <AiChamberView />
+            <AiChamberView
+              onExit={() => setIsAiMode(false)}
+              onServiceIntent={handleCardClick}
+            />
           </motion.div>
         )}
       </AnimatePresence>
